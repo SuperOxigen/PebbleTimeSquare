@@ -11,9 +11,9 @@ typedef struct TimeSquare {
 } TimeSquare;
 
 static Window *s_main_window;
-static TimeSquare s_hour   = { .text_layer = 0, .prop_anim = 0, .time_str = 0, .dim = 40, .ix = 5 },
-                  s_minute = { .text_layer = 0, .prop_anim = 0, .time_str = 0, .dim = 35, .ix = 50 },
-                  s_second = { .text_layer = 0, .prop_anim = 0, .time_str = 0, .dim = 30, .ix = 90 };
+static TimeSquare s_hour   = { .text_layer = 0, .prop_anim = 0, .time_str = 0, .dim = 40, .ix = 10 },
+                  s_minute = { .text_layer = 0, .prop_anim = 0, .time_str = 0, .dim = 35, .ix = 60 },
+                  s_second = { .text_layer = 0, .prop_anim = 0, .time_str = 0, .dim = 28, .ix = 105 };
 char zero[] = "00";
 
 #define MAX_WIDTH 144
@@ -49,12 +49,13 @@ static void tick_handler(struct tm * tick_time, TimeUnits units_changed) {
 
 // ****************** ANIMATION HANDLING ***********************
 
-#define MAX_CYCLE 5
+#define MAX_CYCLE 8
+#define CYCLE_TIME 3000
 
 static void trigger_animation();
 
 inline int calc_delay() {
-	return 2000 / MAX_CYCLE;
+	return CYCLE_TIME / MAX_CYCLE;
 }
 
 void animation_stopped(Animation * animation, bool finished, void * data) {
@@ -87,6 +88,10 @@ static void time_square_set_animation(TimeSquare * ts, int cur_stage) {
 	} else {
 		to_frame = GRect(rand() % (MAX_WIDTH - ts->dim), rand() % (MAX_HEIGHT - ts->dim), ts->dim, ts->dim);
 	}
+
+#ifndef PBL_PLATFORM_APLITE
+	text_layer_set_background_color(ts->text_layer, GColorFromRGB(rand()%256, rand()%256, rand()%256));
+#endif
 
 	ts->prop_anim = property_animation_create_layer_frame(layer, &from_frame, &to_frame);
 
@@ -191,12 +196,23 @@ static void add_time_square(Window * window, TimeSquare * ts) {
 	}
 
 	ts->text_layer = text_layer_create(time_square_get_default_rec(ts));
+#ifdef PBL_PLATFORM_APLITE
 	text_layer_set_background_color(ts->text_layer, GColorBlack);
+#else
+	text_layer_set_background_color(ts->text_layer, GColorFromRGB(rand()%256, rand()%256, rand()%256));
+#endif
 	text_layer_set_text_color(ts->text_layer, GColorWhite);
 	ts->time_str = malloc(TS_LENGTH);
 	strcpy(ts->time_str, zero);
 	text_layer_set_text(ts->text_layer, ts->time_str);
-	text_layer_set_font(ts->text_layer, fonts_get_system_font(FONT_KEY_ROBOTO_CONDENSED_21));
+	if (ts->dim <= 32 ) {
+		text_layer_set_font(ts->text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
+	} else if (ts->dim <= 37) {
+		text_layer_set_font(ts->text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24));
+	} else {
+		text_layer_set_font(ts->text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28));
+	}
+	
 	text_layer_set_text_alignment(ts->text_layer, GTextAlignmentCenter);
 
 	layer_add_child(window_get_root_layer(window), text_layer_get_layer(ts->text_layer));
