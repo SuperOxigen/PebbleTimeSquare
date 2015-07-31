@@ -1,46 +1,35 @@
+#include "time_square.h"
 #include <pebble.h>
 #include <string.h>
 // #include <pthread.h>
 
-typedef struct TimeSquare {
-	TextLayer * text_layer;
-	PropertyAnimation * prop_anim;
-	char * time_str;
-	int dim;
-	int ix;
-} TimeSquare;
 
 static Window *s_main_window;
-static TimeSquare s_hour   = { .text_layer = 0, .prop_anim = 0, .time_str = 0, .dim = 40, .ix = 10 },
-                  s_minute = { .text_layer = 0, .prop_anim = 0, .time_str = 0, .dim = 35, .ix = 60 },
-                  s_second = { .text_layer = 0, .prop_anim = 0, .time_str = 0, .dim = 28, .ix = 105 };
+static TimeSquare * s_hour, * s_minute, * s_second;
+
 char zero[] = "00";
 
-#define MAX_WIDTH 144
-#define MAX_HEIGHT 168
-#define TS_LENGTH 5
 
-static GRect time_square_get_default_rec(TimeSquare * ts) {
-	return GRect(ts->ix, (MAX_HEIGHT - ts->dim) / 2, ts->dim, ts->dim);	
-}
 
 // **************** TIME HANDLING ***************************
 
 static void update_time(struct tm * tick_time) {
-	if (!s_hour.text_layer || !s_minute.text_layer || !s_second.text_layer) return;
+	if (s_hour && s_minute && s_second) {
+		char buffer[TS_LENGTH];
 
-	if (clock_is_24h_style()) {
-		strftime(s_hour.time_str, TS_LENGTH, "%H", tick_time);
-	} else {
-		strftime(s_hour.time_str, TS_LENGTH, "%I", tick_time);
+		if (clock_is_24h_style()) {
+			strftime(buffer, TS_LENGTH, "%H", tick_time);
+		} else {
+			strftime(buffer, TS_LENGTH, "%l", tick_time);
+		}
+		time_square_set_time(s_hour, buffer);
+
+		strftime(buffer, TS_LENGTH, "%M", tick_time);
+		time_square_set_time(s_minute, buffer);		
+
+		strftime(buffer, TS_LENGTH, "%S", tick_time);
+		time_square_set_time(s_second, buffer);
 	}
-	text_layer_set_text(s_hour.text_layer, s_hour.time_str);
-
-	strftime(s_minute.time_str, TS_LENGTH, "%M", tick_time);
-	text_layer_set_text(s_minute.text_layer, s_minute.time_str);
-
-	strftime(s_second.time_str, TS_LENGTH, "%S", tick_time);
-	text_layer_set_text(s_second.text_layer, s_second.time_str);
 }
 
 static void tick_handler(struct tm * tick_time, TimeUnits units_changed) {
@@ -49,8 +38,8 @@ static void tick_handler(struct tm * tick_time, TimeUnits units_changed) {
 
 // ****************** ANIMATION HANDLING ***********************
 
-#define MAX_CYCLE 8
-#define CYCLE_TIME 3000
+#define MAX_CYCLE 5
+#define CYCLE_TIME 2000
 
 static void trigger_animation();
 
@@ -59,15 +48,9 @@ inline int calc_delay() {
 }
 
 void animation_stopped(Animation * animation, bool finished, void * data) {
-#ifdef PBL_PLATFORM_APLITE
-	// Automatically GB with V3
-	property_animation_destroy(s_hour.prop_anim);
-	property_animation_destroy(s_minute.prop_anim);
-	property_animation_destroy(s_second.prop_anim);
-#endif
-	s_hour.prop_anim = 0;
-	s_minute.prop_anim = 0;
-	s_second.prop_anim = 0;
+	time_square_destroy_animation(s_hour);
+	time_square_destroy_animation(s_minute);
+	time_square_destroy_animation(s_second);
 
 	trigger_animation();
 }
@@ -76,29 +59,28 @@ void animation_started(Animation * animation, void *data) {
 
 }
 
-static void time_square_set_animation(TimeSquare * ts, int cur_stage) {
-	if (ts->prop_anim) return;
-
-	Layer * layer = text_layer_get_layer(ts->text_layer);	
-
-	GRect from_frame = layer_get_frame(layer);
+static GRect get_to_frame(TimeSquare * ts, int cur_stage) {
 	GRect to_frame;
 	if (cur_stage == MAX_CYCLE) {
 		to_frame = time_square_get_default_rec(ts);
 	} else {
-		to_frame = GRect(rand() % (MAX_WIDTH - ts->dim), rand() % (MAX_HEIGHT - ts->dim), ts->dim, ts->dim);
+		to_frame = time_square_gen_random_rec(ts);
 	}
+	return to_frame;
+}
+
+static Animation * create_animation(TimeSquare * ts, int cur_stage) {
+	GRect to_frame = get_to_frame(ts, cur_stage);
 
 #ifndef PBL_PLATFORM_APLITE
-	text_layer_set_background_color(ts->text_layer, GColorFromRGB(rand()%256, rand()%256, rand()%256));
+	time_square_randomize_color(ts);
 #endif
 
-	ts->prop_anim = property_animation_create_layer_frame(layer, &from_frame, &to_frame);
-
-	Animation * anim = property_animation_get_animation(ts->prop_anim);
-
+	Animation * anim = time_square_create_animation(ts, NULL, &to_frame);
 
 	animation_set_duration(anim, calc_delay()); // Half second
+
+	return anim;
 }
 
 static int stage = 0;  // DO NOT DIRECTLY REFERENCE
@@ -130,9 +112,9 @@ static void trigger_animation() {
 	int cur_stage = inc_stage();
 	if (!cur_stage) return;
 
-	time_square_set_animation(&s_hour, cur_stage);
-	time_square_set_animation(&s_minute, cur_stage);
-	time_square_set_animation(&s_second, cur_stage);
+	Animation * h_amin = create_animation(s_hour, cur_stage);
+	Animation * m_amin = create_animation(s_minute, cur_stage);
+	Animation * s_amin = create_animation(s_second, cur_stage);
 
 	AnimationHandlers a_handler = { 
 		.started = (AnimationStartedHandler) animation_started,
@@ -140,10 +122,6 @@ static void trigger_animation() {
 	};
 
 #ifdef PBL_PLATFORM_APLITE
-	Animation * h_amin, * m_amin, * s_amin;
-	h_amin = property_animation_get_animation(s_hour.prop_anim);
-	m_amin = property_animation_get_animation(s_minute.prop_anim);
-	s_amin = property_animation_get_animation(s_second.prop_anim);
 	animation_set_duration(h_amin, calc_delay() + 5);
 	animation_set_handlers(h_amin, a_handler, NULL);
 	animation_schedule(h_amin);
@@ -152,9 +130,9 @@ static void trigger_animation() {
 #else
 	Animation * anim;
 	anim = animation_spawn_create(
-		property_animation_get_animation(s_hour.prop_anim),
-		property_animation_get_animation(s_minute.prop_anim),
-		property_animation_get_animation(s_second.prop_anim),
+		h_amin,
+		m_amin,
+		s_amin,
 		NULL // Signifies end of animations
 	);
 	animation_set_handlers(anim, a_handler, NULL);
@@ -179,72 +157,38 @@ static void tap_handler(AccelAxisType axis, int32_t direction) {
 
 // ****************** LAYER DRAWYING ***************************
 
-static void destroy_time_square(TimeSquare * ts) {
-	if (ts->text_layer) {
-		text_layer_destroy(ts->text_layer);
-		ts->text_layer = 0;
-	}
-	if (ts->time_str) {
-		free(ts->time_str);
-		ts->time_str = 0;
-	}
-}
-
-static void add_time_square(Window * window, TimeSquare * ts) {
-	if (ts->text_layer || ts->time_str) {
-		destroy_time_square(ts);
-	}
-
-	ts->text_layer = text_layer_create(time_square_get_default_rec(ts));
-#ifdef PBL_PLATFORM_APLITE
-	text_layer_set_background_color(ts->text_layer, GColorBlack);
-#else
-	text_layer_set_background_color(ts->text_layer, GColorFromRGB(rand()%256, rand()%256, rand()%256));
-#endif
-	text_layer_set_text_color(ts->text_layer, GColorWhite);
-	ts->time_str = malloc(TS_LENGTH);
-	strcpy(ts->time_str, zero);
-	text_layer_set_text(ts->text_layer, ts->time_str);
-	if (ts->dim <= 32 ) {
-		text_layer_set_font(ts->text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
-	} else if (ts->dim <= 37) {
-		text_layer_set_font(ts->text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24));
-	} else {
-		text_layer_set_font(ts->text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28));
-	}
-	
-	text_layer_set_text_alignment(ts->text_layer, GTextAlignmentCenter);
-
-	layer_add_child(window_get_root_layer(window), text_layer_get_layer(ts->text_layer));
-}
 
 static void main_window_load(Window *window) {
-	add_time_square(window, &s_hour);
-	add_time_square(window, &s_minute);
-	add_time_square(window, &s_second);
+	time_square_add_parent(s_hour, window_get_root_layer(window));
+	time_square_add_parent(s_minute, window_get_root_layer(window));
+	time_square_add_parent(s_second, window_get_root_layer(window));
 
 	tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
 	accel_tap_service_subscribe(tap_handler);
 }
 
 static void main_window_unload(Window *window) {
-	destroy_time_square(&s_hour);
-	destroy_time_square(&s_minute);
-	destroy_time_square(&s_second);
+
 }
 
 static void init() {
+	s_hour = time_square_create(40, 10, (MAX_HEIGHT - 40) / 2);
+	s_minute = time_square_create(35, 60, (MAX_HEIGHT - 35) / 2);
+	s_second = time_square_create(28, 105, (MAX_HEIGHT - 28) / 2);
+
 	s_main_window = window_create();
 
 	WindowHandlers main_handler = { .load   = main_window_load,
 	                                .unload = main_window_unload };
 	window_set_window_handlers(s_main_window, main_handler);
-
 	window_stack_push(s_main_window, true);
 }
 
 static void deinit() {
 	window_destroy(s_main_window);
+	time_square_destroy(s_hour);
+	time_square_destroy(s_minute);
+	time_square_destroy(s_second);
 }
 
 int main(void) {
