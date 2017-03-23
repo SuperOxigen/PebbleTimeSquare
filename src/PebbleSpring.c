@@ -172,11 +172,17 @@ static void main_window_unload(Window *window) {
 }
 
 static void init() {
-	s_hour = time_square_create(40, 10, (MAX_HEIGHT - 40) / 2);
+	s_hour   = time_square_create(40, 10, (MAX_HEIGHT - 40) / 2);
 	s_minute = time_square_create(35, 60, (MAX_HEIGHT - 35) / 2);
 	s_second = time_square_create(28, 105, (MAX_HEIGHT - 28) / 2);
 
 	s_main_window = window_create();
+
+#ifndef COLOR_INVERSION
+	window_set_background_color(s_main_window, GColorWhite);
+#else
+	window_set_background_color(s_main_window, GColorBlack);
+#endif
 
 	WindowHandlers main_handler = { .load   = main_window_load,
 	                                .unload = main_window_unload };

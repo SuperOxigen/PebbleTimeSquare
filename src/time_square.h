@@ -5,10 +5,12 @@
 #define MAX_WIDTH 144
 #define MAX_HEIGHT 168
 
+#define COLOR_INVERSION
+
 typedef struct TimeSquare {
 	TextLayer * text_layer;
 	PropertyAnimation * prop_anim;
-	char * time_str;
+	char time_str[TS_LENGTH];
 	int dim;
 	int ix;
 	int iy;
@@ -27,7 +29,6 @@ void time_square_reset_color(TimeSquare *);
 
 void time_square_set_time(TimeSquare *, char * time_str);
 char * time_square_get_time(TimeSquare *, char * dest);
-
 
 Layer * time_square_get_layer(TimeSquare *);
 GRect time_square_get_frame(TimeSquare *);

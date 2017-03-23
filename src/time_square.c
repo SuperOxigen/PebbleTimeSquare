@@ -25,7 +25,19 @@ GRect time_square_gen_random_rec(TimeSquare * ts) {
 }
 
 static inline GColor time_square_default_color() {
+#ifndef COLOR_INVERSION
 	return GColorBlack;
+#else
+	return GColorWhite;
+#endif
+}
+
+static inline GColor time_square_default_font_color() {
+#ifndef COLOR_INVERSION
+	return GColorWhite;
+#else
+	return GColorBlack;
+#endif
 }
 
 #ifdef PBL_PLATFORM_BASALT
@@ -53,15 +65,14 @@ TimeSquare * time_square_create(int dim, int ix, int iy) {
 		ts->ix = ix;
 		ts->iy = iy;
 
-		ts->time_str = malloc(TS_LENGTH);
-		if (ts->time_str) {
-			strncpy(ts->time_str, "00", TS_LENGTH);
-		}
+		strncpy(ts->time_str, "00", TS_LENGTH);
 
 		ts->text_layer = text_layer_create(time_square_get_default_rec(ts));
-		if (ts->text_layer)
-		text_layer_set_font(ts->text_layer, time_square_default_font(ts));
-		text_layer_set_text_alignment(ts->text_layer, GTextAlignmentCenter);
+		if (ts->text_layer) {
+			text_layer_set_font(ts->text_layer, time_square_default_font(ts));
+			text_layer_set_text_color(ts->text_layer, time_square_default_font_color());
+			text_layer_set_text_alignment(ts->text_layer, GTextAlignmentCenter);
+		}
 		time_square_reset_color(ts);
 
 		ts->prop_anim = NULL;
@@ -72,10 +83,7 @@ TimeSquare * time_square_create(int dim, int ix, int iy) {
 
 void time_square_destroy(TimeSquare * ts) {
 	if (ts) {
-		if (ts->time_str) {
-			free(ts->time_str);
-			ts->time_str = 0;
-		}
+
 		if (ts->text_layer) {
 			text_layer_destroy(ts->text_layer);
 			ts->text_layer = 0;
@@ -92,21 +100,21 @@ void time_square_add_parent(TimeSquare * ts, Layer * parent) {
 }
 
 static void time_square_update_text(TimeSquare * ts) {
-	if (ts->text_layer && ts->time_str) {
+	if (ts->text_layer) {
 		text_layer_set_text(ts->text_layer, ts->time_str);
 	}
 }
 
 void time_square_set_time(TimeSquare * ts, char * time_str) {
-	if (time_str && ts->time_str) {
+	if (time_str) {
 		strncpy(ts->time_str, time_str, TS_LENGTH);
 		time_square_update_text(ts);
 	}
 }
 
 char * time_square_get_time(TimeSquare * ts, char * dest) {
-	if (dest && ts->time_str) {
-		strncpy(dest, ts->time_str, TS_LENGTH);
+	if (dest) {
+		dest = strncpy(dest, ts->time_str, TS_LENGTH);
 	} else {
 		dest = NULL;
 	}
